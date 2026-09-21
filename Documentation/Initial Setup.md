@@ -1,67 +1,160 @@
 # Initial Setup
 
-Setting up the FreeSO server is very similar to setting up the FreeSO client, to a point. You need the following to run it at all:
+This document describes initial setup for the current `archive` branch.
 
-- .NET Core 2.2.207
-- A compiled `FSO.Server.Core`.
-- A copy of The Sims Online, in a folder specified by `gameLocation` in `config.json`.
-- An "nfs" directory where you want the server to store lot and object saves.
-- Create and fill out `config.json`.
+> Older setup guides may mention .NET Framework 4.5 and .NET Core 2.2. The current client and server projects in this branch target .NET 9.
 
-## .NET Core 2.2
+## Requirements
 
-You can find installers for Windows and instructions for Linux here:
+You need:
 
-https://dotnet.microsoft.com/en-us/download/dotnet/2.2
+- .NET 9 SDK
+- A compiled FreeSO client/server, or the source repository
+- The Sims Online game files
+- A database supported by the server configuration
+- An NFS/data directory for lot and object saves
+- A configured `config.json`
 
-FreeSO is built with .NET Framework 4.5, but the server runs on .NET Core 2.2 for improved compatibility with Linux and to use the new ASP.NET backend.
+For development, Visual Studio or Visual Studio Code can be used.
 
-## FSO.Server.Core
+## Build First
 
-The FreeSO code should work on all platforms, assuming that you have dotnet core sdk installed. You can find the latest builds of the official repository using these cloudflare handlers. Eventually, these will move to a GitHub release.
+From the repository:
 
-### Client
+```powershell
+cd TSOClient
+dotnet tool restore
+dotnet restore FreeSO.sln
+dotnet build FreeSO.sln
+```
 
-https://fso-builds.riperiperi.workers.dev/
+The primary projects are:
 
-### Server
+- `FSO.Windows` — Windows client, targeting `net9.0-windows`
+- `FSO.Server.Core` — server executable, targeting `net9.0`
 
-https://fso-builds.riperiperi.workers.dev/?mode=server
+## The Sims Online Game Data
 
-### Custom Build
+FreeSO still relies on original The Sims Online game data for objects, avatars, UI resources, tuning and other content.
 
-If you wish to make code changes to the client or the server, see the Building FreeSO documentation.
+Configure `gameLocation` so that it points to the directory containing the expected TSO client data.
 
-## The Sims Online
+For example, if this file exists:
 
-FreeSO requires The Sims Online `1.1097.1.0`, which can be downloaded from here: https://archive.org/details/TheSimsOnline_2002
+```text
+./game/tuning.dat
+```
 
-There's also another version floating around with identifier `1.1239.1.0`. If you try to use this version with the FreeSO client, it will be able to patch it to be the same as the old version through a delta patch. You can then use this patched version on the server.
+then a suitable value is:
+
+```json
+"gameLocation": "./game/"
+```
+
+## Server Data Directory
+
+Configure `simNFS` to a directory where the server can store persistent lot/object data, thumbnails and related server files.
+
+Example:
+
+```json
+"simNFS": "./nfs"
+```
+
+Create the directory if it does not exist.
 
 ## config.json
 
-With everything now in place, you need to initialize your `config.json` file. Here's a handy guide:
+Prepare a `config.json` based on the sample configuration included with the server.
 
-1. Copy `config.sample.json` to `config.json`.
-2. Change `gameLocation` to a relative path to your TSO install. This folder should have the contents of `TSOClient`, so if `./game/tuning.dat` exists, then you should put `./game/` in this field.
-3. Change `simNFS` to a relative path to a folder where you want to store lot and object saves, as well as lot thumbnails. If you have a distributed server setup, this should be on a network drive.
-4. Change the secret to something unique. If you don't do this, other people will be able to impersonate your city/lot servers and cause havoc.
-  - This should be a random 64 character hex string. I'm sure you can find a generator.
-5. Configure database (see Database Setup)
-  - The most important thing is setting your connection string to match your database setup.
-6. Configure servers (see Server Configuration)
-  - The most important thing is changing the `public_host` fields for everything _except_ the task server to match your server's public IP. (the endpoint through which game clients will connect to your server)
+At minimum, review the following values:
 
-That should be the long and short of it. After this, your server can be started with the dotnet command:
+1. `gameLocation`
+2. `simNFS`
+3. `secret`
+4. database connection settings
+5. service bindings
+6. public host addresses
+7. shard/city configuration
 
-`dotnet exec FSO.Server.Core.dll`
+### Secret
 
-## Client Prep
+Use a unique secret for communication between server components.
 
-![](./media/debugurl.png)
+Do not deploy the sample/default secret on a public server.
 
-To connect to your custom server, press F1 on the login screen and change the URL in the text box to match your API server endpoint. This will update your client configuration to connect to this server every time. If you want to distribute a client made for a specific server, you should overwrite this URL in the default config.
+### Database
 
-## Bogus Update Request
+Set the database connection string to match your server.
 
-If your client version string is different from the server, it will ask you to update. You can ignore this by holding shift and clicking "No" on the dialog. See the Updates documentation for more information on properly configuring updates.
+Example structure:
+
+```json
+"database": {
+  "connectionString": "server=127.0.0.1;uid=fsoserver;pwd=password;database=fso;"
+}
+```
+
+Refer to `Database Setup.md` for database creation and schema details.
+
+### Public Hosts
+
+For services that clients must reach, configure the appropriate `public_host` values for the machine or public IP/domain hosting the server.
+
+For a local development server, loopback/local addresses may be sufficient.
+
+## Run the Server
+
+From `TSOClient`:
+
+```powershell
+dotnet run --project .\FSO.Server.Core\FSO.Server.Core.csproj
+```
+
+Or run a compiled build directly:
+
+```powershell
+dotnet .\FSO.Server.Core\bin\Debug\net9.0\FSO.Server.Core.dll
+```
+
+For a Release build:
+
+```powershell
+dotnet build .\FSO.Server.Core\FSO.Server.Core.csproj -c Release
+dotnet .\FSO.Server.Core\bin\Release\net9.0\FSO.Server.Core.dll
+```
+
+## Run the Client
+
+From `TSOClient`:
+
+```powershell
+dotnet run --project .\FSO.Windows\FSO.Windows.csproj
+```
+
+Or open `FreeSO.sln` and run `FSO.Windows`.
+
+## Connecting the Client to a Custom Server
+
+On the FreeSO login screen, the debug/server URL interface can be used to point the client at your custom API endpoint.
+
+For a client distributed specifically for one server, configure the default endpoint as part of your client build/configuration rather than requiring users to change it manually.
+
+## Client and Server Version Mismatch
+
+If the client and server use incompatible version/update information, the client may request an update.
+
+For development, keep client and server built from compatible source revisions. For production, configure the normal FreeSO update infrastructure rather than relying on bypass behavior.
+
+See `Updates.md` for details.
+
+## Development Notes
+
+The current branch is built with modern SDK-style projects. Do not follow legacy steps that require:
+
+- .NET Framework 4.5 targeting packs
+- .NET Core 2.2 SDK/runtime
+- MonoGame 3.6
+- `Protobuild.exe --generate`
+
+For the current branch, use the target frameworks and package versions declared in the project files as the source of truth.
